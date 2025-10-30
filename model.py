@@ -4,6 +4,8 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
+# random generation, can be used to see visual correlations
+
 np.random.seed(42)
 num_samples = 100
 train_data = pd.DataFrame ({

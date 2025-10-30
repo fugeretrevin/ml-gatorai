@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, classification_report
 
-
+# model most useful for full integration
 
 def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
     words = [

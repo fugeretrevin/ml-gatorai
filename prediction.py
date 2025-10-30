@@ -9,7 +9,7 @@ from sklearn.model_selection import train_test_split
 
 
 
-#MOCK SETUPS FOR DATA, WILL BE INTEGRATED TO DB LATER
+#MOCK SETUPS FOR DATA, LAYOUT ONLY NOT FUNCTIONAL WITH DB
 
 #general user data
 users = {
