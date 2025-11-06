@@ -8,6 +8,8 @@ mock_data = create_mock_data()
 features = engineer_features(mock_data)
 ml_model, full_features = train_model(features)
 
+
+#currently gets the words in mock data for review
 @app.route('/review', methods=['GET'])
 def review():
     user_id = request.args.get('user_id', 'User1')

@@ -1,17 +1,17 @@
-# Use an official lightweight Python image
+# lightweight python image
 FROM python:3.10-slim
 
-# Set working directory
+# working directory
 WORKDIR /app
 
-# Copy files
+# copy files
 COPY . .
 
-# Install dependencies
+# install dependencies from the txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose the port Cloud Run uses
+# the port Google Cloud Run uses
 ENV PORT=8080
 
-# Start the web server
+# start web server on that port
 CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 main:app
