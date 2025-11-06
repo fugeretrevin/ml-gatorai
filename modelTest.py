@@ -138,8 +138,8 @@ def get_review_words(user_id, all_words_df, model, num_words=15):
 
     # timestamp to right format
     user_latest_state['timestamp'] = pd.to_datetime(user_latest_state['timestamp'])
-    user_latest_state['time_since_last_seen_days'] = (now - user_latest_state['timestamp']).dt.total_seconds() / (
-                60 * 60 * 24)
+    user_latest_state['time_since_last_seen_days'] = ((now - user_latest_state['timestamp']).dt.total_seconds()
+    / (60 * 60 * 24))
 
     # next attempt is one more than last time seen
     user_latest_state['times_seen'] += 1
