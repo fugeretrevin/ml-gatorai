@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV PORT=8080
 
 # start web server on that port
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 main:app
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 app:app
