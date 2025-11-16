@@ -2,12 +2,13 @@ from flask import Flask, request, jsonify
 from modelTest import create_mock_data, engineer_features, train_model, get_review_words
 import pandas as pd
 from flask_cors import CORS
-
+import joblib
 app = Flask(__name__)
 CORS(app)
 mock_data = create_mock_data()
 features = engineer_features(mock_data)
-ml_model, full_features = train_model(features)
+ml_model = joblib.load("model.joblib")
+mock_data = joblib.load("mock_data.joblib")
 
 
 #currently gets the words in mock data for review
