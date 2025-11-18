@@ -1,3 +1,5 @@
+import firebase_admin
+from firebase_admin import credentials, firestore
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
@@ -14,7 +16,6 @@ def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
         "obfuscate", "plethora", "quixotic", "recalcitrant", "veracity",
         "zephyr", "cognizant", "ebullient", "fastidious", "idiosyncratic"
     ]
-    word_difficulties = {word: np.random.randint(1, 11) for word in words}
 
     attempts_data = []
 
@@ -38,7 +39,6 @@ def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
                     "word": word,
                     "timestamp": attempt_timestamp,
                     "is_correct": correct,
-                    "difficulty_score": word_difficulties[word]
                 })
 
     df = pd.DataFrame(attempts_data)
@@ -47,7 +47,37 @@ def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
     return df
 
 
-# create features
+cred = credentials.Certificate("C:/Users/12148/Documents/GitHub/ml-gatorai/study-buddy-7306c-firebase-adminsdk-fbsvc-c98a89a3c4.json")
+firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+
+# --- 2. NEW: Function to fetch all data ---
+def fetch_data_from_firestore():
+    print("Fetching data from Firestore...")
+    attempts_ref = db.collection("all_quiz_attempts")
+    docs = attempts_ref.stream() # This gets all documents in the collection
+
+    attempts_list = []
+    for doc in docs:
+        attempts_list.append(doc.to_dict())
+    
+    if not attempts_list:
+        print("No data found in Firestore.")
+        return pd.DataFrame() # Return empty DataFrame
+
+    # --- 3. Convert to the DataFrame your model expects ---
+    df = pd.DataFrame(attempts_list)
+    
+    # IMPORTANT: Convert data types
+    # Timestamps from Firestore are already datetime objects
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['is_correct'] = df['is_correct'].astype(bool)
+    # The rest (user_id, word) are probably fine as objects/strings
+    
+    print(f"Successfully fetched {len(df)} attempts.")
+    return df
+
 
 def engineer_features(df):
     # time since the last attempt for user, work
@@ -86,7 +116,6 @@ def engineer_features(df):
 def train_model(features_df):
 
     features = [
-        'difficulty_score',
         'time_since_last_seen_days',
         'prev_attempt_correct',
         'times_seen',
@@ -148,7 +177,6 @@ def get_review_words(user_id, all_words_df, model, num_words=15):
 
     # features for prediction
     prediction_features = [
-        'difficulty_score',
         'time_since_last_seen_days',
         'prev_attempt_correct',
         'times_seen',
@@ -173,13 +201,14 @@ def get_review_words(user_id, all_words_df, model, num_words=15):
 
 
 if __name__ == "__main__":
-    mock_data_df = create_mock_data()
+    #mock_data_df = create_mock_data()
+    real_data_df = fetch_data_from_firestore()
+    if not real_data_df.empty:
+        # get features from mock data
+        features_df = engineer_features(real_data_df)
 
-    # get features from mock data
-    features_df = engineer_features(mock_data_df)
+        # train model
+        ml_model, full_feature_df = train_model(features_df)
 
-    # train model
-    ml_model, full_feature_df = train_model(features_df)
-
-    mock_user = "User1"
-    review_session_words = get_review_words(mock_user, mock_data_df, ml_model, num_words=15)
+        mock_user = "User1"
+        review_session_words = get_review_words(mock_user, real_data_df, ml_model, num_words=15)
