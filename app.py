@@ -19,7 +19,7 @@ CURRENT_DATA_DF = pd.DataFrame() # DataFrame to hold data loaded from Firestore
 try:
     # Use the path to your service account key JSON file
     # Get this file from the Firebase Console -> Project settings -> Service accounts
-    cred = credentials.Certificate('path/to/your/serviceAccountKey.json')
+    cred = credentials.Certificate('study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json')
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("Firebase initialized successfully.")

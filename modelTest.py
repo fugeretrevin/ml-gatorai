@@ -3,9 +3,14 @@ from firebase_admin import credentials, firestore
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
+
+from matplotlib import pyplot as plt
+import seaborn as sns
+
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
+
 
 # model most useful for full integration
 
@@ -22,6 +27,7 @@ def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
     for i in range(1, num_users + 1):
         #create users
         user_id = f"User{i}"
+
         for word in np.random.choice(words, words_per_user, replace=False):
             # fake history for attempt datas
             is_correct_history = []
@@ -41,13 +47,41 @@ def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
                     "is_correct": correct,
                 })
 
+        user_words = np.random.choice(words, min(len(words), 10), replace=False)
+
+        for word in user_words:
+            is_correct_history = []
+            for j in range(attempts_per_word):
+                # Logic: User gets better over time (prob increases)
+                if len(is_correct_history) == 0:
+                    prob_correct = 0.3
+                else:
+                    prob_correct = sum(is_correct_history) / len(is_correct_history)
+                    prob_correct = min(0.9, prob_correct + 0.1)  # Cap at 90%
+
+                correct = 1 if np.random.rand() < prob_correct else 0
+                is_correct_history.append(correct)
+
+                # Random timestamp in the past
+                attempt_timestamp = datetime.now() - timedelta(days=np.random.randint(1, 100),
+                                                               hours=np.random.randint(0, 24))
+
+                attempts_data.append({
+                    "user_id": user_id,
+                    "word": word,
+                    "timestamp": attempt_timestamp,
+                    "is_correct": correct,
+                })
     df = pd.DataFrame(attempts_data)
     df = df.sort_values(by=["user_id", "word", "timestamp"]).reset_index(drop=True)
-    print(df)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['is_correct'] = df['is_correct'].astype(bool)
+
+    print(f"Generated {len(df)} rows of mock data.")
     return df
 
 
-cred = credentials.Certificate("C:/Users/12148/Documents/GitHub/ml-gatorai/study-buddy-7306c-firebase-adminsdk-fbsvc-c98a89a3c4.json")
+cred = credentials.Certificate("study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json")
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -81,6 +115,7 @@ def fetch_data_from_firestore():
 
 def engineer_features(df):
     # time since the last attempt for user, work
+    df['is_correct_int'] = df['is_correct'].astype(int)
     df['time_since_last_seen_days'] = df.groupby(['user_id', 'word'])['timestamp'].diff().dt.total_seconds() / (
                 60 * 60 * 24)
     df['time_since_last_seen_days'] = df['time_since_last_seen_days'].fillna(
@@ -112,7 +147,113 @@ def engineer_features(df):
     return features_df
 
 
+def plot_classification_report(y_test, y_pred):
+    from sklearn.metrics import classification_report
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    import pandas as pd
+
+    # 1. Get the report as a Dictionary instead of text
+    report_dict = classification_report(y_test, y_pred, output_dict=True)
+
+    # 2. Convert to DataFrame
+    report_df = pd.DataFrame(report_dict).transpose()
+
+    # 3. Drop the 'support' column for the heatmap (it's just a count, messes up the color scale)
+    # But keep accuracy/macro avg rows if you want them
+    plot_df = report_df.drop(columns=['support'])
+
+    # 4. Plot
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(plot_df, annot=True, cmap='RdBu_r', vmin=0, vmax=1.0, fmt='.2%')
+    plt.title('Model Classification Report')
+    plt.show()
+
+
+# Call it in your main block
+# plot_classification_report(y_test, y_pred)
+def visualize_model_performance(model, X_test, y_test, feature_names):
+    # Set style
+    sns.set_theme(style="whitegrid")
+
+    # 1. Feature Importance (Weight Report)
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
+
+    plt.figure(figsize=(10, 6))
+    plt.title("Feature Importances (Weights)")
+    sns.barplot(x=importances[indices], y=[feature_names[i] for i in indices], palette="viridis")
+    plt.xlabel("Relative Importance")
+    plt.tight_layout()
+    plt.show()
+
+    # 2. Confusion Matrix
+    y_pred = model.predict(X_test)
+    cm = confusion_matrix(y_test, y_pred)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False,
+                xticklabels=['Incorrect', 'Correct'],
+                yticklabels=['Incorrect', 'Correct'])
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.title('Confusion Matrix')
+    plt.show()
+
+    # 3. ROC Curve (Receiver Operating Characteristic)
+    # This shows how well the model distinguishes between classes
+    y_probs = model.predict_proba(X_test)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test, y_probs)
+    roc_auc = auc(fpr, tpr)
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC)')
+    plt.legend(loc="lower right")
+    plt.show()
+    report_dict = classification_report(y_test, y_pred, output_dict=True)
+    report_df = pd.DataFrame(report_dict).transpose()
+    plot_df = report_df.drop(columns=['support'])  # drop support col for cleaner map
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(plot_df, annot=True, cmap='RdBu_r', vmin=0, vmax=1.0, fmt='.2%')
+    plt.title('Model Classification Report')
+    plt.show()
 # train model based on features
+def train_and_evaluate(features_df):
+    features = [
+        'time_since_last_seen_days',
+        'prev_attempt_correct',
+        'times_seen',
+        'word_accuracy_rate',
+        'user_overall_accuracy'
+    ]
+    target = 'is_correct'
+
+    X = features_df[features]
+    y = features_df[target].astype(int)  # Ensure target is int
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
+    model.fit(X_train, y_train)
+
+    # Text Report
+    y_pred = model.predict(X_test)
+    print("--- Model Evaluation ---")
+    print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred))
+
+    # Graphic Visualizations
+    visualize_model_performance(model, X_test, y_test, features)
+
+    return model
 def train_model(features_df):
 
     features = [
@@ -201,7 +342,18 @@ def get_review_words(user_id, all_words_df, model, num_words=15):
 
 
 if __name__ == "__main__":
-    #mock_data_df = create_mock_data()
+    data_df = create_mock_data(num_users=10, words_per_user=15, attempts_per_word=10)
+    '''
+    if not data_df.empty:
+        # 2. Engineer features
+        features_df = engineer_features(data_df)
+
+        # 3. Train and Visualize
+        ml_model = train_and_evaluate(features_df)
+        # 4. Test Prediction Logic (Optional)
+        # mock_user = "User1"
+        # get_review_words(mock_user, data_df, ml_model)
+    '''
     real_data_df = fetch_data_from_firestore()
     if not real_data_df.empty:
         # get features from mock data
