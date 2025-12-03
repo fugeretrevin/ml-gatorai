@@ -6,7 +6,7 @@ import pandas as pd
 import joblib
 from datetime import datetime
 import os
-
+import json
 from modelTest import create_mock_data, engineer_features, train_model, get_review_words
 
 app = Flask(__name__)
@@ -16,34 +16,60 @@ db = None
 ML_MODEL = None
 CURRENT_DATA_DF = pd.DataFrame()
 
+# ==========================================
+# ROBUST FIREBASE CONNECTION LOGIC
+# ==========================================
 try:
-    if not firebase_admin._apps:
-        key_file = 'study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json'
+    cred = None
 
-        if os.path.exists(key_file):
-            print(f"Found local key: {key_file}")
-            cred = credentials.Certificate(key_file)
+    # PRIORITY 1: Check for GitHub Secret / Environment Variable
+    if "FIREBASE_KEY" in os.environ:
+        print("Found FIREBASE_KEY in environment variables.")
+        cred_dict = json.loads(os.environ["FIREBASE_KEY"])
+        cred = credentials.Certificate(cred_dict)
+
+    # PRIORITY 2: Check for Local File (Update this filename to match your actual local file)
+    # Using a relative path is safer than "C:/Users/..."
+    elif os.path.exists('study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json'):
+        print("Found local JSON key file.")
+        cred = credentials.Certificate('study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json')
+
+    # INITIALIZE:
+    if not firebase_admin._apps:
+        if cred:
+            # Use the credentials found in Priority 1 or 2
             firebase_admin.initialize_app(cred)
         else:
-            print("No local key found. Using Cloud Default Credentials.")
-            firebase_admin.initialize_app()  # No args needed on Cloud Run!
+            # PRIORITY 3: No keys found? Assume we are on Google Cloud (Cloud Run)
+            print("No keys found. Attempting to use Default Cloud Credentials.")
+            firebase_admin.initialize_app()
 
+    # Connect to the specific database ID
     db = firestore.client(database_id='study-buddy')
-    print(f"Firebase connected to 'study-buddy'.")
+    print(f"Firebase connected successfully to 'study-buddy'.")
 
 except Exception as e:
-    print(f"Error initializing Firebase: {e}")
+    print(f"CRITICAL ERROR initializing Firebase: {e}")
     db = None
+
+# ==========================================
+# LOAD ML MODEL
+# ==========================================
 try:
-    ML_MODEL = joblib.load("model.joblib")
-    print("ML Model loaded successfully.")
+    # Ensure model.joblib is in the same folder or committed to GitHub
+    if os.path.exists("model.joblib"):
+        ML_MODEL = joblib.load("model.joblib")
+        print("ML Model loaded successfully.")
+    else:
+        print("Warning: 'model.joblib' not found. Predictions will fail.")
 except Exception as e:
-    print(f"Error loading ML Model: {e}. Review functionality may be impaired.")
+    print(f"Error loading ML Model: {e}")
 
 
 def load_data_from_firestore():
     """Fetches data from 'all_quiz_attempts', cleans it, and returns a DataFrame."""
     if db is None:
+        print("Database not connected, cannot load data.")
         return pd.DataFrame()
 
     print("Loading data from Firestore...")
@@ -55,26 +81,22 @@ def load_data_from_firestore():
         data_list = []
         for doc in docs:
             data = doc.to_dict()
-
-            if 'word' not in data:
-                continue
-
-            if 'timestamp' not in data:
-                data['timestamp'] = datetime.now()
-
+            if 'word' not in data: continue
+            if 'timestamp' not in data: data['timestamp'] = datetime.now()
             data_list.append(data)
 
         df = pd.DataFrame(data_list)
 
         if not df.empty:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
-
             try:
                 df['timestamp'] = df['timestamp'].dt.tz_localize(None)
             except Exception:
                 pass
 
-            df['is_correct'] = df['is_correct'].astype(int)
+            # Handle boolean/int conversion safely
+            if 'is_correct' in df.columns:
+                df['is_correct'] = df['is_correct'].astype(int)
 
             if 'difficulty_score' in df.columns:
                 df['difficulty_score'] = df['difficulty_score'].fillna(0).astype(int)
@@ -87,37 +109,44 @@ def load_data_from_firestore():
     except Exception as e:
         print(f"Error loading data from Firestore: {e}")
         return pd.DataFrame()
+
+
 @app.route('/review', methods=['GET'])
 def review():
     target_user_id = request.args.get('user_id', 'User1')
     print(f"Generating review for: {target_user_id}")
 
     global CURRENT_DATA_DF
+    # Reload data to get latest attempts
     CURRENT_DATA_DF = load_data_from_firestore()
 
     if CURRENT_DATA_DF.empty:
         return jsonify({
             "user_id": target_user_id,
             "review_words": [],
-            "message": "No data found in Firestore."
+            "message": "No data found in Firestore or Database not connected."
         })
 
     try:
         working_df = CURRENT_DATA_DF.copy()
+        # Ensure engineer_features is robust enough to handle empty data if filtering happens
         engineer_features(working_df)
-
     except Exception as e:
         return jsonify({"error": f"Feature engineering failed: {str(e)}"}), 500
 
     try:
-        words = get_review_words(target_user_id, working_df, ML_MODEL, num_words=15)
+        if ML_MODEL is None:
+            return jsonify({"error": "ML Model is not loaded."}), 500
 
+        words = get_review_words(target_user_id, working_df, ML_MODEL, num_words=15)
         return jsonify({
             "user_id": target_user_id,
             "review_words": words
         })
     except Exception as e:
         return jsonify({"error": f"Prediction failed: {str(e)}"}), 500
+
+
 @app.route('/log_attempt', methods=['POST'])
 def log_attempt():
     if db is None:
@@ -127,22 +156,19 @@ def log_attempt():
         data = request.json
         user_id = data.get('user_id')
         word = data.get('word')
-        is_correct = data.get('is_correct')  # Expecting 0 or 1, or boolean
+        is_correct = data.get('is_correct')
 
-        # Validate inputs
         if not all([user_id, word, is_correct is not None]):
             return jsonify({"message": "Missing required fields."}), 400
 
-        # Create the record
         new_attempt = {
             'user_id': user_id,
             'word': word,
             'timestamp': firestore.SERVER_TIMESTAMP,
-            'is_correct': bool(int(is_correct)),  # Ensure stored as boolean or int consistently
+            'is_correct': bool(int(is_correct)),
         }
 
         db.collection('all_quiz_attempts').add(new_attempt)
-
         return jsonify({"message": f"Attempt for '{word}' logged successfully."}), 201
 
     except Exception as e:
