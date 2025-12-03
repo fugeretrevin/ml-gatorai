@@ -86,29 +86,23 @@ firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
-# --- 2. NEW: Function to fetch all data ---
 def fetch_data_from_firestore():
     print("Fetching data from Firestore...")
     attempts_ref = db.collection("all_quiz_attempts")
-    docs = attempts_ref.stream() # This gets all documents in the collection
-
+    docs = attempts_ref.stream()
     attempts_list = []
     for doc in docs:
         attempts_list.append(doc.to_dict())
     
     if not attempts_list:
         print("No data found in Firestore.")
-        return pd.DataFrame() # Return empty DataFrame
+        return pd.DataFrame()
 
-    # --- 3. Convert to the DataFrame your model expects ---
     df = pd.DataFrame(attempts_list)
-    
-    # IMPORTANT: Convert data types
-    # Timestamps from Firestore are already datetime objects
+
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['is_correct'] = df['is_correct'].astype(bool)
-    # The rest (user_id, word) are probably fine as objects/strings
-    
+
     print(f"Successfully fetched {len(df)} attempts.")
     return df
 
@@ -153,30 +147,21 @@ def plot_classification_report(y_test, y_pred):
     import matplotlib.pyplot as plt
     import pandas as pd
 
-    # 1. Get the report as a Dictionary instead of text
     report_dict = classification_report(y_test, y_pred, output_dict=True)
 
-    # 2. Convert to DataFrame
     report_df = pd.DataFrame(report_dict).transpose()
 
-    # 3. Drop the 'support' column for the heatmap (it's just a count, messes up the color scale)
-    # But keep accuracy/macro avg rows if you want them
     plot_df = report_df.drop(columns=['support'])
 
-    # 4. Plot
     plt.figure(figsize=(8, 6))
     sns.heatmap(plot_df, annot=True, cmap='RdBu_r', vmin=0, vmax=1.0, fmt='.2%')
     plt.title('Model Classification Report')
     plt.show()
 
 
-# Call it in your main block
-# plot_classification_report(y_test, y_pred)
 def visualize_model_performance(model, X_test, y_test, feature_names):
-    # Set style
     sns.set_theme(style="whitegrid")
 
-    # 1. Feature Importance (Weight Report)
     importances = model.feature_importances_
     indices = np.argsort(importances)[::-1]
 
@@ -187,7 +172,6 @@ def visualize_model_performance(model, X_test, y_test, feature_names):
     plt.tight_layout()
     plt.show()
 
-    # 2. Confusion Matrix
     y_pred = model.predict(X_test)
     cm = confusion_matrix(y_test, y_pred)
 
@@ -200,8 +184,6 @@ def visualize_model_performance(model, X_test, y_test, feature_names):
     plt.title('Confusion Matrix')
     plt.show()
 
-    # 3. ROC Curve (Receiver Operating Characteristic)
-    # This shows how well the model distinguishes between classes
     y_probs = model.predict_proba(X_test)[:, 1]
     fpr, tpr, _ = roc_curve(y_test, y_probs)
     roc_auc = auc(fpr, tpr)
@@ -236,21 +218,17 @@ def train_and_evaluate(features_df):
     target = 'is_correct'
 
     X = features_df[features]
-    y = features_df[target].astype(int)  # Ensure target is int
-
+    y = features_df[target].astype(int)
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
     model.fit(X_train, y_train)
 
-    # Text Report
     y_pred = model.predict(X_test)
     print("--- Model Evaluation ---")
     print(f"Accuracy: {accuracy_score(y_test, y_pred):.4f}")
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred))
-
-    # Graphic Visualizations
     visualize_model_performance(model, X_test, y_test, features)
 
     return model

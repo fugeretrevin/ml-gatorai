@@ -1,18 +1,14 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# --- SETUP (Matches your App exactly) ---
 if not firebase_admin._apps:
-    # Make sure this matches the JSON file in your App
     cred = credentials.Certificate('study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json')
     firebase_admin.initialize_app(cred)
 
-# Connect to the named database
 print("Connecting to database: 'study-buddy'...")
 try:
     db = firestore.client(database_id='study-buddy')
 except ValueError:
-    # Fallback in case the name is wrong, tries default
     print("Could not find 'study-buddy' DB. Trying default...")
     db = firestore.client()
 
@@ -30,7 +26,7 @@ def inspect_database():
         return
 
     for coll in found_collections:
-        print(f"\n📁 Collection Found: '{coll.id}'")
+        print(f"\n Collection Found: '{coll.id}'")
 
         # 2. Check the data inside
         docs = list(coll.stream())
@@ -43,12 +39,12 @@ def inspect_database():
 
             # 3. Check for the specific error causing your issue
             if 'word' in first_doc:
-                print(f"   - ✅ 'word' field exists. Value: {first_doc['word']}")
+                print(f"   -  'word' field exists. Value: {first_doc['word']}")
             else:
-                print(f"   - ❌ 'word' field is MISSING. The App ignores these records.")
+                print(f"   - 'word' field is MISSING. The App ignores these records.")
 
             if coll.id != 'all_quiz_attempts':
-                print(f"   - ⚠️ NAME MISMATCH: App looks for 'all_quiz_attempts', but found '{coll.id}'.")
+                print(f"   - ⚠ NAME MISMATCH: App looks for 'all_quiz_attempts', but found '{coll.id}'.")
 
 
 if __name__ == "__main__":
