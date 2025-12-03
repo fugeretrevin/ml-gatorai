@@ -5,6 +5,7 @@ from firebase_admin import credentials, firestore
 import pandas as pd
 import joblib
 from datetime import datetime
+import os
 
 # Import your helper functions
 from modelTest import create_mock_data, engineer_features, train_model, get_review_words
@@ -19,13 +20,21 @@ CURRENT_DATA_DF = pd.DataFrame()
 
 # --- 1. INITIALIZE FIREBASE ---
 try:
-    # Check if Firebase is already running to avoid "Already Exists" errors
     if not firebase_admin._apps:
-        cred = credentials.Certificate('study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json')
-        firebase_admin.initialize_app(cred)
+        # Define the local filename
+        key_file = 'study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json'
 
-    # Connect to the SPECIFIC database where your data lives
-    # This line must run every time, even if the app was already initialized
+        if os.path.exists(key_file):
+            # We are Local: Use the file
+            print(f"Found local key: {key_file}")
+            cred = credentials.Certificate(key_file)
+            firebase_admin.initialize_app(cred)
+        else:
+            # We are on Cloud Run: Use Automatic Cloud Credentials
+            print("No local key found. Using Cloud Default Credentials.")
+            firebase_admin.initialize_app()  # No args needed on Cloud Run!
+
+    # Always connect to the specific DB
     db = firestore.client(database_id='study-buddy')
     print(f"Firebase connected to 'study-buddy'.")
 
