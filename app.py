@@ -107,7 +107,6 @@ def load_data_from_firestore():
         print(f"Error loading data from Firestore: {e}")
         return pd.DataFrame()
 @app.route('/review', methods=['GET'])
-@app.route('/review', methods=['GET'])
 def review():
     target_user_id = request.args.get('user_id', 'User1')
     print(f"Generating review for: {target_user_id}")
@@ -181,4 +180,5 @@ def log_attempt():
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host="0.0.0.0", port=port, debug=True)
