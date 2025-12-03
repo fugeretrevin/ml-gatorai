@@ -335,10 +335,9 @@ def get_review_words(user_id, all_words_df, model, num_words=15):
     # sort by lowest probability of being correct as those are most likely to be forgotten
     review_list = user_latest_state.sort_values(by='predicted_prob_correct', ascending=True)
 
-    print("Suggested words:")
-    print(review_list[['word', 'predicted_prob_correct']].head(num_words))
+    # NEW LINE: Returns a list of dictionaries like [{'word': 'apple', 'prob': 0.45}, ...]
+    return review_list[['word', 'predicted_prob_correct']].head(num_words).to_dict(orient='records')
 
-    return review_list['word'].head(num_words).tolist()
 
 
 if __name__ == "__main__":
