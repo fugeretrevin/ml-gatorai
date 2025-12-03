@@ -81,10 +81,7 @@ def create_mock_data(num_users=5, words_per_user=20, attempts_per_word=5):
     return df
 
 
-cred = credentials.Certificate("study-buddy-7306c-firebase-adminsdk-fbsvc-c2d71ba03d.json")
-firebase_admin.initialize_app(cred)
 
-db = firestore.client()
 
 def fetch_data_from_firestore():
     print("Fetching data from Firestore...")
