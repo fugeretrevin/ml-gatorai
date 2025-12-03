@@ -43,6 +43,54 @@ def review():
     return jsonify({"user": user_id, "review_words": words})
 '''
 
+
+def load_data_from_firestore():
+    if db is None:
+        return pd.DataFrame()
+
+    print("Loading data from Firestore...")
+
+    # 1. FIX: Use the correct collection name from your screenshot
+    try:
+        attempts_ref = db.collection('all_quiz_attempts')
+        docs = attempts_ref.stream()
+
+        data_list = []
+        for doc in docs:
+            data = doc.to_dict()
+
+            # 2. FIX: Ensure 'word' exists, otherwise skip this bad record
+            if 'word' not in data:
+                continue
+
+                # Handle timestamp
+            if 'timestamp' in data and hasattr(data['timestamp'], 'to_datetime'):
+                data['timestamp'] = data['timestamp'].to_datetime()
+            elif 'timestamp' not in data:
+                data['timestamp'] = datetime.now()
+
+            data_list.append(data)
+
+        df = pd.DataFrame(data_list)
+
+        if not df.empty:
+            # FIX: Ensure is_correct is treated as an integer (1 or 0)
+            df['is_correct'] = df['is_correct'].astype(int)
+
+            # FIX: Only process difficulty_score if it actually exists in the DB
+            if 'difficulty_score' in df.columns:
+                df['difficulty_score'] = df['difficulty_score'].fillna(0).astype(int)
+
+            df = df.sort_values(by=["user_id", "word", "timestamp"]).reset_index(drop=True)
+
+        print(f"Loaded {len(df)} records from Firestore.")
+        return df
+
+    except Exception as e:
+        print(f"Error loading data from Firestore: {e}")
+        return pd.DataFrame()
+
+'''
 def load_data_from_firestore():
     """Reads all attempt data from the Firestore 'attempts' collection and converts it to a Pandas DataFrame."""
     if db is None:
@@ -52,7 +100,7 @@ def load_data_from_firestore():
 
     # 1. Get all documents from the 'attempts' collection
     try:
-        attempts_ref = db.collection('attempts')
+        attempts_ref = db.collection('all_quiz_attempts')
         docs = attempts_ref.stream()
 
         data_list = []
@@ -126,7 +174,7 @@ def log_attempt():
 # Assuming you have loaded your model and data as global variables:
 # ML_MODEL = joblib.load("model.joblib")
 # CURRENT_DATA_DF = load_data_from_firestore() # Data loaded at startup
-
+'''
 @app.route('/review', methods=['GET'])
 def review():
     user_id = request.args.get('user_id', 'User1')
